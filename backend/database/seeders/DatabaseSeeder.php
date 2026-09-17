@@ -5,6 +5,8 @@ namespace Database\Seeders;
 use App\Models\User;
 use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
+use Illuminate\Support\Facades\Hash;
+use LogicException;
 
 class DatabaseSeeder extends Seeder
 {
@@ -15,11 +17,20 @@ class DatabaseSeeder extends Seeder
      */
     public function run(): void
     {
-        // User::factory(10)->create();
+        $name = (string) config('auth.seed_user.name');
+        $email = (string) config('auth.seed_user.email');
+        $password = (string) config('auth.seed_user.password');
 
-        User::factory()->create([
-            'name' => 'Test User',
-            'email' => 'test@example.com',
-        ]);
+        if ($email === '' || $password === '') {
+            throw new LogicException('SEED_USER_EMAIL and SEED_USER_PASSWORD must be configured.');
+        }
+
+        User::query()->updateOrCreate(
+            ['email' => $email],
+            [
+                'name' => $name,
+                'password' => Hash::make($password),
+            ],
+        );
     }
 }

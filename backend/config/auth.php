@@ -114,4 +114,10 @@ return [
 
     'password_timeout' => env('AUTH_PASSWORD_TIMEOUT', 10800),
 
+    'seed_user' => [
+        'name' => env('SEED_USER_NAME', 'Demo User'),
+        'email' => env('SEED_USER_EMAIL', 'demo@example.com'),
+        'password' => env('SEED_USER_PASSWORD'),
+    ],
+
 ];

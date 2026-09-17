@@ -119,8 +119,6 @@ Docker Compose:
 docker compose config
 ```
 
-Маршрут `GET /api/user` защищён Sanctum и до реализации входа ожидаемо отвечает `401 Unauthorized`.
-
 ## Переменные окружения
 
 Основные переменные backend:
@@ -132,6 +130,33 @@ docker compose config
 - `SESSION_DRIVER=database`, `CACHE_STORE=database`, `QUEUE_CONNECTION=database` — хранение сессий, кэша и очереди в SQLite.
 
 Frontend использует `VITE_API_URL` как базовый адрес API.
+
+## Тестовый пользователь
+
+После `composer setup` пользователь создаётся автоматически. Для существующей базы его можно создать или обновить отдельно:
+
+```powershell
+cd backend
+php artisan db:seed
+```
+
+Данные по умолчанию:
+
+```text
+Email: demo@example.com
+Пароль: demo-password
+```
+
+Значения задаются через `SEED_USER_NAME`, `SEED_USER_EMAIL` и `SEED_USER_PASSWORD`. Они опубликованы в `.env.example` 
+
+## API авторизации
+
+Sanctum использует cookie-сессию. Frontend должен выполнять запросы с `credentials: include` в следующем порядке:
+
+1. `GET /sanctum/csrf-cookie` — получить CSRF-cookie.
+2. `POST /api/login` — передать `email` и `password`.
+3. `GET /api/user` — получить текущего пользователя.
+4. `POST /api/logout` — завершить сессию.
 
 ## Модель данных
 
