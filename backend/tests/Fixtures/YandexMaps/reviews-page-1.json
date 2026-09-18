@@ -1,0 +1,56 @@
+{
+  "config": {
+    "csrfToken": "fixture-token"
+  },
+  "stack": [
+    {
+      "results": {
+        "items": [
+          {
+            "id": "123456789",
+            "title": "Тестовая кофейня",
+            "seoname": "testovaya_kofeynya",
+            "ratingData": {
+              "ratingCount": 125,
+              "ratingValue": 4.8,
+              "reviewCount": 3
+            },
+            "reviewResults": {
+              "reviews": [
+                {
+                  "reviewId": "review-1",
+                  "businessId": "123456789",
+                  "author": {
+                    "name": "Анна"
+                  },
+                  "text": "Отличный кофе.",
+                  "rating": 5,
+                  "updatedTime": "2026-08-10T09:30:00.000Z"
+                },
+                {
+                  "reviewId": "review-2",
+                  "businessId": "123456789",
+                  "author": {
+                    "name": "Иван"
+                  },
+                  "text": "Хорошее место.",
+                  "rating": 4,
+                  "updatedTime": "2026-08-09T14:15:00.000Z"
+                }
+              ],
+              "params": {
+                "offset": 0,
+                "limit": 2,
+                "count": 3,
+                "loadedReviewsCount": 2,
+                "page": 1,
+                "totalPages": 2,
+                "reviewsRemained": 1
+              }
+            }
+          }
+        ]
+      }
+    }
+  ]
+}
