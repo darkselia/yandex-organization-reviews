@@ -29,7 +29,7 @@ services:
       context: ./backend
     command: >-
       sh -c "composer install --no-interaction --prefer-dist
-      && php artisan queue:work --tries=3"
+      && php artisan queue:work --tries=3 --timeout=600"
     init: true
     depends_on:
       api:

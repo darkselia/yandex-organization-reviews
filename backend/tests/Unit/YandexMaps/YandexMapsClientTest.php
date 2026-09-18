@@ -63,6 +63,12 @@ class YandexMapsClientTest extends TestCase
             [503, 'text/html', 'unavailable', ParserErrorCode::SourceUnavailable],
             [200, 'application/json', '{}', ParserErrorCode::InvalidSourceData],
             [200, 'text/html', '', ParserErrorCode::EmptySourceResponse],
+            [
+                200,
+                'text/html',
+                '<html><head><title>Ой!</title></head><body class="CheckboxCaptcha"></body></html>',
+                ParserErrorCode::SourceBlocked,
+            ],
         ];
     }
 

@@ -13,14 +13,13 @@ use Illuminate\Support\Facades\Http;
 
 class YandexMapsClient
 {
-    private const CONNECT_TIMEOUT_SECONDS = 10;
-
-    private const TIMEOUT_SECONDS = 20;
-
     private CookieJar $cookies;
 
-    public function __construct()
-    {
+    private ?float $lastRequestAt = null;
+
+    public function __construct(
+        private readonly ?int $requestDelayMilliseconds = null,
+    ) {
         $this->cookies = new CookieJar;
     }
 
@@ -33,6 +32,8 @@ class YandexMapsClient
                 'Парсер получил неподдерживаемую ссылку организации.',
             );
         }
+
+        $this->waitForRequestSlot();
 
         try {
             $response = Http::withOptions([
@@ -47,15 +48,18 @@ class YandexMapsClient
                     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
                     .'AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0 Safari/537.36',
                 )
-                ->connectTimeout(self::CONNECT_TIMEOUT_SECONDS)
-                ->timeout(self::TIMEOUT_SECONDS)
+                ->connectTimeout((int) config('services.yandex_maps.connect_timeout_seconds', 10))
+                ->timeout((int) config('services.yandex_maps.timeout_seconds', 20))
                 ->retry(
                     [1000, 3000],
                     when: static fn (\Exception $exception): bool => $exception instanceof ConnectionException,
                     throw: false,
                 )
                 ->get($this->reviewsUrl($organizationUrl), ['page' => $page]);
+            $this->lastRequestAt = microtime(true);
         } catch (ConnectionException $exception) {
+            $this->lastRequestAt = microtime(true);
+
             throw new OrganizationParserException(
                 ParserErrorCode::SourceUnavailable,
                 'Не удалось подключиться к Яндекс Картам.',
@@ -112,5 +116,35 @@ class YandexMapsClient
                 'Яндекс Карты вернули пустой ответ.',
             );
         }
+
+        if ($this->isCaptchaPage($response->body())) {
+            throw new OrganizationParserException(
+                ParserErrorCode::SourceBlocked,
+                'Яндекс Карты запросили проверку пользователя.',
+            );
+        }
+    }
+
+    private function waitForRequestSlot(): void
+    {
+        $delayMilliseconds = $this->requestDelayMilliseconds
+            ?? (int) config('services.yandex_maps.request_delay_ms', 500);
+
+        if ($delayMilliseconds <= 0 || $this->lastRequestAt === null) {
+            return;
+        }
+
+        $elapsedMicroseconds = (int) ((microtime(true) - $this->lastRequestAt) * 1_000_000);
+        $remainingMicroseconds = ($delayMilliseconds * 1000) - $elapsedMicroseconds;
+
+        if ($remainingMicroseconds > 0) {
+            usleep($remainingMicroseconds);
+        }
+    }
+
+    private function isCaptchaPage(string $body): bool
+    {
+        return preg_match('~<title[^>]*>\s*(?:Ой!?|Captcha)\s*</title>~iu', $body) === 1
+            || preg_match('~class=["\'][^"\']*(?:CheckboxCaptcha|SmartCaptcha)[^"\']*["\']~iu', $body) === 1;
     }
 }

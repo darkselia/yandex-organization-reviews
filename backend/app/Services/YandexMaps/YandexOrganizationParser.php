@@ -109,6 +109,8 @@ class YandexOrganizationParser implements OrganizationParser
             ratingsCount: $firstPage->ratingsCount,
             reviewsCount: $firstPage->reviewsCount,
             reviews: array_values($reviewsById),
+            sourceReviewsCount: count($processedReviewIds),
+            skippedReviewsCount: count($processedReviewIds) - count($reviewsById),
         );
     }
 

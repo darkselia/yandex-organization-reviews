@@ -13,5 +13,7 @@ final readonly class ParsedOrganization
         public int $ratingsCount,
         public int $reviewsCount,
         public array $reviews,
+        public int $sourceReviewsCount = 0,
+        public int $skippedReviewsCount = 0,
     ) {}
 }

@@ -44,7 +44,7 @@
         ],
         "queue": [
             "Composer\\Config::disableProcessTimeout",
-            "@php artisan queue:work --tries=3"
+            "@php artisan queue:work --tries=3 --timeout=600"
         ],
         "test": [
             "@php artisan config:clear --ansi @no_additional_args",

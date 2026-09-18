@@ -49,6 +49,8 @@ class YandexOrganizationParserTest extends TestCase
         $this->assertSame(4.8, $organization->rating);
         $this->assertSame(125, $organization->ratingsCount);
         $this->assertSame(3, $organization->reviewsCount);
+        $this->assertSame(3, $organization->sourceReviewsCount);
+        $this->assertSame(0, $organization->skippedReviewsCount);
         $this->assertSame(['review-1', 'review-2', 'review-3'], array_map(
             static fn ($review): string => $review->externalId,
             $organization->reviews,

@@ -35,4 +35,10 @@ return [
         ],
     ],
 
+    'yandex_maps' => [
+        'connect_timeout_seconds' => (int) env('YANDEX_CONNECT_TIMEOUT_SECONDS', 10),
+        'timeout_seconds' => (int) env('YANDEX_TIMEOUT_SECONDS', 20),
+        'request_delay_ms' => (int) env('YANDEX_REQUEST_DELAY_MS', 500),
+    ],
+
 ];
