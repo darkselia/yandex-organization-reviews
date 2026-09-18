@@ -18,6 +18,12 @@ class OrganizationResource extends JsonResource
             'ratings_count' => $this->ratings_count,
             'reviews_count' => $this->reviews_count,
             'last_synced_at' => $this->last_synced_at?->toISOString(),
+            'latest_parse_run' => $this->whenLoaded(
+                'latestParseRun',
+                fn (): ?ParseRunResource => $this->latestParseRun === null
+                    ? null
+                    : ParseRunResource::make($this->latestParseRun),
+            ),
         ];
     }
 }

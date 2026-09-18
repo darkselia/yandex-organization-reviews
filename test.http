@@ -1,0 +1,314 @@
+@baseUrl = http://localhost:8000
+@frontendUrl = http://localhost:5173
+# Для проверки короткой ссылки замените значение на реальную ссылку вида:
+# https://yandex.ru/maps/-/XXXXXXXX
+@organizationUrl = https://ya.ru/maps/org/o_key/111838242550/
+
+### 1. Получить CSRF-cookie
+GET {{baseUrl}}/sanctum/csrf-cookie
+Accept: application/json
+Origin: {{frontendUrl}}
+Referer: {{frontendUrl}}/
+
+> {%
+  client.test("CSRF cookie received", function () {
+    client.assert(response.status === 204, "Expected HTTP 204");
+
+    const cookie = response.cookiesByName("XSRF-TOKEN")[0];
+    client.assert(cookie, "XSRF-TOKEN cookie was not received");
+  });
+
+  const cookie = response.cookiesByName("XSRF-TOKEN")[0];
+
+  if (cookie) {
+    client.global.set(
+      "csrf_token",
+      decodeURIComponent(cookie.value)
+    );
+  }
+%}
+
+### 2. Войти
+POST {{baseUrl}}/api/login
+Content-Type: application/json
+Accept: application/json
+Origin: {{frontendUrl}}
+Referer: {{frontendUrl}}/
+X-XSRF-TOKEN: {{csrf_token}}
+
+{
+  "email": "demo@example.com",
+  "password": "demo-password"
+}
+
+> {%
+  client.test("Login successful", function () {
+    client.assert(response.status === 200, "Expected HTTP 200");
+    client.assert(
+      response.body.data.email === "demo@example.com",
+      "Unexpected user"
+    );
+  });
+
+  // После входа Laravel может обновить CSRF-cookie.
+  // Сохраняем актуальное значение для logout.
+  const cookie = response.cookiesByName("XSRF-TOKEN")[0];
+
+  if (cookie) {
+    client.global.set(
+      "csrf_token",
+      decodeURIComponent(cookie.value)
+    );
+  }
+%}
+
+### 3. Получить текущего пользователя
+GET {{baseUrl}}/api/user
+Accept: application/json
+Origin: {{frontendUrl}}
+Referer: {{frontendUrl}}/
+
+> {%
+  client.test("User is authenticated", function () {
+    client.assert(response.status === 200, "Expected HTTP 200");
+    client.assert(
+      response.body.data.email === "demo@example.com",
+      "Unexpected user"
+    );
+  });
+%}
+
+### 4. Подключить организацию
+POST {{baseUrl}}/api/organizations
+Content-Type: application/json
+Accept: application/json
+Origin: {{frontendUrl}}
+Referer: {{frontendUrl}}/
+X-XSRF-TOKEN: {{csrf_token}}
+
+{
+  "url": "{{organizationUrl}}"
+}
+
+> {%
+  client.test("Organization accepted for parsing", function () {
+    client.assert(response.status === 202, "Expected HTTP 202");
+    client.assert(response.body.data.organization.id, "Organization ID was not returned");
+    client.assert(response.body.data.parse_run.id, "Parse run ID was not returned");
+    client.assert(
+      response.body.data.parse_run.status === "queued",
+      "Expected queued parse run"
+    );
+  });
+
+  if (response.status === 202) {
+    client.global.set("organization_id", response.body.data.organization.id);
+    client.global.set("parse_run_id", response.body.data.parse_run.id);
+  }
+%}
+
+### 5. Повторно отправить ту же организацию
+POST {{baseUrl}}/api/organizations
+Content-Type: application/json
+Accept: application/json
+Origin: {{frontendUrl}}
+Referer: {{frontendUrl}}/
+X-XSRF-TOKEN: {{csrf_token}}
+
+{
+  "url": "{{organizationUrl}}"
+}
+
+> {%
+  client.test("Existing organization reused", function () {
+    client.assert(response.status === 202, "Expected HTTP 202");
+    client.assert(
+      response.body.data.organization.id == client.global.get("organization_id"),
+      "A duplicate organization was created"
+    );
+  });
+%}
+
+# Для выполнения фонового парсинга после запросов 4–5 запустите в терминале:
+# cd backend
+# php artisan queue:work --once -v
+
+### 6. Получить список организаций
+GET {{baseUrl}}/api/organizations
+Accept: application/json
+Origin: {{frontendUrl}}
+Referer: {{frontendUrl}}/
+
+> {%
+  client.test("Organizations list returned", function () {
+    client.assert(response.status === 200, "Expected HTTP 200");
+    client.assert(Array.isArray(response.body.data), "Expected data array");
+    client.assert(
+      response.body.data.some(function (organization) {
+        return organization.id == client.global.get("organization_id");
+      }),
+      "Connected organization was not found"
+    );
+  });
+%}
+
+### 7. Получить карточку организации
+GET {{baseUrl}}/api/organizations/{{organization_id}}
+Accept: application/json
+Origin: {{frontendUrl}}
+Referer: {{frontendUrl}}/
+
+> {%
+  client.test("Organization details returned", function () {
+    client.assert(response.status === 200, "Expected HTTP 200");
+    client.assert(
+      response.body.data.id == client.global.get("organization_id"),
+      "Unexpected organization"
+    );
+    client.assert(
+      Object.prototype.hasOwnProperty.call(response.body.data, "latest_parse_run"),
+      "Latest parse run was not returned"
+    );
+  });
+%}
+
+### 8. Проверить состояние и прогресс парсинга
+GET {{baseUrl}}/api/parse-runs/{{parse_run_id}}
+Accept: application/json
+Origin: {{frontendUrl}}
+Referer: {{frontendUrl}}/
+
+> {%
+  client.test("Parse run status returned", function () {
+    const allowedStatuses = ["queued", "running", "retrying", "succeeded", "failed"];
+
+    client.assert(response.status === 200, "Expected HTTP 200");
+    client.assert(
+      response.body.data.id == client.global.get("parse_run_id"),
+      "Unexpected parse run"
+    );
+    client.assert(
+      allowedStatuses.includes(response.body.data.status),
+      "Unexpected parse run status"
+    );
+    client.assert(
+      Object.prototype.hasOwnProperty.call(response.body.data, "progress_percent"),
+      "Progress was not returned"
+    );
+    client.assert(
+      Object.prototype.hasOwnProperty.call(response.body.data, "error"),
+      "Error state was not returned"
+    );
+  });
+%}
+
+### 9. Получить первую страницу отзывов
+GET {{baseUrl}}/api/organizations/{{organization_id}}/reviews?page=1
+Accept: application/json
+Origin: {{frontendUrl}}
+Referer: {{frontendUrl}}/
+
+> {%
+  client.test("First reviews page returned", function () {
+    client.assert(response.status === 200, "Expected HTTP 200");
+    client.assert(Array.isArray(response.body.data), "Expected data array");
+    client.assert(response.body.data.length <= 50, "Page contains more than 50 reviews");
+    client.assert(response.body.meta.current_page === 1, "Expected first page");
+    client.assert(response.body.meta.per_page === 50, "Expected 50 reviews per page");
+    client.assert(
+      Object.prototype.hasOwnProperty.call(response.body.meta, "last_page"),
+      "Last page was not returned"
+    );
+    client.assert(
+      Object.prototype.hasOwnProperty.call(response.body.meta, "total"),
+      "Total reviews count was not returned"
+    );
+  });
+%}
+
+### 10. Получить вторую страницу отзывов
+GET {{baseUrl}}/api/organizations/{{organization_id}}/reviews?page=2
+Accept: application/json
+Origin: {{frontendUrl}}
+Referer: {{frontendUrl}}/
+
+> {%
+  client.test("Second reviews page returned", function () {
+    client.assert(response.status === 200, "Expected HTTP 200");
+    client.assert(Array.isArray(response.body.data), "Expected data array");
+    client.assert(response.body.data.length <= 50, "Page contains more than 50 reviews");
+    client.assert(response.body.meta.current_page === 2, "Expected second page");
+    client.assert(response.body.meta.per_page === 50, "Expected 50 reviews per page");
+  });
+%}
+
+### 11. Проверить единый JSON-ответ для отсутствующей организации
+GET {{baseUrl}}/api/organizations/999999999
+Accept: application/json
+Origin: {{frontendUrl}}
+Referer: {{frontendUrl}}/
+
+> {%
+  client.test("Missing organization returns JSON 404", function () {
+    client.assert(response.status === 404, "Expected HTTP 404");
+    client.assert(response.body.message === "Ресурс не найден.", "Unexpected error message");
+    client.assert(response.body.errors, "Errors object was not returned");
+  });
+%}
+
+### 12. Проверить отклонение ссылки с постороннего сайта
+POST {{baseUrl}}/api/organizations
+Content-Type: application/json
+Accept: application/json
+Origin: {{frontendUrl}}
+Referer: {{frontendUrl}}/
+X-XSRF-TOKEN: {{csrf_token}}
+
+{
+  "url": "https://example.com/maps/org/test/123456789"
+}
+
+> {%
+  client.test("Foreign URL rejected", function () {
+    client.assert(response.status === 422, "Expected HTTP 422");
+    client.assert(response.body.errors.url, "URL validation error was not returned");
+  });
+%}
+
+### 13. Выйти
+POST {{baseUrl}}/api/logout
+Accept: application/json
+Origin: {{frontendUrl}}
+Referer: {{frontendUrl}}/
+X-XSRF-TOKEN: {{csrf_token}}
+
+> {%
+  client.test("Logout successful", function () {
+    client.assert(response.status === 204, "Expected HTTP 204");
+  });
+%}
+
+### 14. Проверить, что сессия завершена
+GET {{baseUrl}}/api/user
+Accept: application/json
+Origin: {{frontendUrl}}
+Referer: {{frontendUrl}}/
+
+> {%
+  client.test("Private route is unavailable", function () {
+    client.assert(response.status === 401, "Expected HTTP 401");
+  });
+%}
+
+### 15. Проверить защиту API организаций после выхода
+GET {{baseUrl}}/api/organizations
+Accept: application/json
+Origin: {{frontendUrl}}
+Referer: {{frontendUrl}}/
+
+> {%
+  client.test("Organizations API requires authentication", function () {
+    client.assert(response.status === 401, "Expected HTTP 401");
+    client.assert(response.body.message === "Требуется авторизация.", "Unexpected error message");
+  });
+%}
