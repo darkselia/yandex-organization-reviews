@@ -13,7 +13,7 @@ class OrganizationResource extends JsonResource
         return [
             'id' => $this->id,
             'source_url' => $this->source_url,
-            'name' => $this->name,
+            'name' => (string) $this->name,
             'rating' => $this->rating === null ? null : (float) $this->rating,
             'ratings_count' => $this->ratings_count,
             'reviews_count' => $this->reviews_count,

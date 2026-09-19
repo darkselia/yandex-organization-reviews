@@ -14,6 +14,7 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Database\Query\Expression;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Throwable;
 
 class SyncYandexOrganizationJob implements ShouldQueue
@@ -33,10 +34,7 @@ class SyncYandexOrganizationJob implements ShouldQueue
         ParserErrorCode::SourceBlocked,
     ];
 
-    public function __construct(
-        public readonly int $organizationId,
-        public readonly int $parseRunId,
-    ) {}
+    public function __construct(public readonly int $parseRunId) {}
 
     public function handle(OrganizationParser $parser): void
     {
@@ -44,12 +42,12 @@ class SyncYandexOrganizationJob implements ShouldQueue
             return;
         }
 
-        $organization = Organization::query()->find($this->organizationId);
+        $parseRun = ParseRun::query()->find($this->parseRunId);
 
-        if ($organization === null) {
+        if ($parseRun === null || $parseRun->normalized_url === null) {
             $this->markFailed(
-                'organization_not_found',
-                'Организация была удалена до начала синхронизации.',
+                'parse_run_data_missing',
+                'В запуске парсинга отсутствует нормализованная ссылка.',
             );
 
             return;
@@ -57,7 +55,7 @@ class SyncYandexOrganizationJob implements ShouldQueue
 
         try {
             $parsedOrganization = $parser->parse(
-                $organization->normalized_url,
+                $parseRun->normalized_url,
                 new ProgressCallback($this->updateProgress(...)),
             );
 
@@ -98,7 +96,6 @@ class SyncYandexOrganizationJob implements ShouldQueue
     {
         return ParseRun::query()
             ->whereKey($this->parseRunId)
-            ->where('organization_id', $this->organizationId)
             ->whereIn('status', [ParseRunStatus::Queued, ParseRunStatus::Retrying])
             ->update([
                 'status' => ParseRunStatus::Running,
@@ -128,7 +125,6 @@ class SyncYandexOrganizationJob implements ShouldQueue
         DB::transaction(function () use ($parsedOrganization): void {
             $parseRun = ParseRun::query()
                 ->whereKey($this->parseRunId)
-                ->where('organization_id', $this->organizationId)
                 ->where('status', ParseRunStatus::Running)
                 ->lockForUpdate()
                 ->first();
@@ -137,16 +133,13 @@ class SyncYandexOrganizationJob implements ShouldQueue
                 return;
             }
 
-            $organization = Organization::query()->lockForUpdate()->find($this->organizationId);
-
-            if ($organization === null) {
-                return;
-            }
-
             $syncedAt = now();
 
-            $organization->update([
+            $organization = Organization::query()->updateOrCreate([
+                'source' => 'yandex',
                 'external_id' => $parsedOrganization->externalId,
+            ], [
+                'source_url' => $parseRun->source_url ?? $parsedOrganization->canonicalUrl,
                 'normalized_url' => $parsedOrganization->canonicalUrl,
                 'name' => $parsedOrganization->name,
                 'rating' => $parsedOrganization->rating,
@@ -176,6 +169,7 @@ class SyncYandexOrganizationJob implements ShouldQueue
             ]);
 
             $parseRun->update([
+                'organization_id' => $organization->id,
                 'status' => ParseRunStatus::Succeeded,
                 'finished_at' => $syncedAt,
                 'error_code' => null,
@@ -197,7 +191,6 @@ class SyncYandexOrganizationJob implements ShouldQueue
 
         return ParseRun::query()
             ->whereKey($this->parseRunId)
-            ->where('organization_id', $this->organizationId)
             ->where('status', ParseRunStatus::Running)
             ->update([
                 'status' => ParseRunStatus::Retrying,
@@ -224,9 +217,8 @@ class SyncYandexOrganizationJob implements ShouldQueue
 
     private function markFailed(string $errorCode, string $errorMessage): void
     {
-        ParseRun::query()
+        $updated = ParseRun::query()
             ->whereKey($this->parseRunId)
-            ->where('organization_id', $this->organizationId)
             ->whereIn('status', [
                 ParseRunStatus::Queued,
                 ParseRunStatus::Running,
@@ -238,5 +230,13 @@ class SyncYandexOrganizationJob implements ShouldQueue
                 'error_code' => $errorCode,
                 'error_message' => $errorMessage,
             ]);
+
+        if ($updated === 1) {
+            Log::warning('Yandex organization parsing failed.', [
+                'parse_run_id' => $this->parseRunId,
+                'error_code' => $errorCode,
+                'error_message' => $errorMessage,
+            ]);
+        }
     }
 }

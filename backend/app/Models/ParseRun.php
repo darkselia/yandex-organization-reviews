@@ -11,6 +11,9 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 #[Fillable([
     'organization_id',
+    'source_url',
+    'normalized_url',
+    'source_external_id',
     'status',
     'attempt_count',
     'reviews_expected',

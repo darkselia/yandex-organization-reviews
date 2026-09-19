@@ -10,24 +10,15 @@ use App\Http\Resources\ReviewResource;
 use App\Models\Organization;
 use App\Services\YandexMaps\YandexUrlException;
 use App\Services\YandexMaps\YandexUrlResolver;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 
 class OrganizationController extends Controller
 {
-    public function index(): AnonymousResourceCollection
-    {
-        $organizations = Organization::query()
-            ->with('latestParseRun')
-            ->latest('updated_at')
-            ->latest('id')
-            ->get();
-
-        return OrganizationResource::collection($organizations);
-    }
-
     public function show(Organization $organization): OrganizationResource
     {
+        $this->ensureConfirmed($organization);
         $organization->load('latestParseRun');
 
         return OrganizationResource::make($organization);
@@ -35,6 +26,7 @@ class OrganizationController extends Controller
 
     public function reviews(Organization $organization): AnonymousResourceCollection
     {
+        $this->ensureConfirmed($organization);
         $reviews = $organization->reviews()
             ->latest('published_at')
             ->latest('id')
@@ -62,13 +54,21 @@ class OrganizationController extends Controller
             ], 422);
         }
 
-        $connection = $connectOrganization->execute($sourceUrl, $normalizedUrl);
+        $parseRun = $connectOrganization->execute($sourceUrl, $normalizedUrl);
 
         return response()->json([
             'data' => [
-                'organization' => (new OrganizationResource($connection->organization))->resolve($request),
-                'parse_run' => (new ParseRunResource($connection->parseRun))->resolve($request),
+                'parse_run' => (new ParseRunResource($parseRun))->resolve($request),
             ],
         ], 202);
+    }
+
+    private function ensureConfirmed(Organization $organization): void
+    {
+        if ($organization->last_synced_at !== null) {
+            return;
+        }
+
+        throw (new ModelNotFoundException)->setModel(Organization::class, [$organization->getKey()]);
     }
 }

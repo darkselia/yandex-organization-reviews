@@ -4,7 +4,7 @@ namespace Tests\Feature;
 
 use App\Enums\ParseRunStatus;
 use App\Jobs\SyncYandexOrganizationJob;
-use App\Models\Organization;
+use App\Models\ParseRun;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
@@ -55,23 +55,24 @@ class OrganizationConnectionTest extends TestCase
 
         $response
             ->assertAccepted()
-            ->assertJsonPath('data.organization.source_url', 'http://www.yandex.ru/maps/org/cafe/123456789/?utm_source=share#reviews')
-            ->assertJsonPath('data.organization.name', null)
-            ->assertJsonPath('data.organization.ratings_count', 0)
             ->assertJsonPath('data.parse_run.status', ParseRunStatus::Queued->value)
+            ->assertJsonPath('data.parse_run.organization_id', null)
             ->assertJsonPath('data.parse_run.progress_percent', null)
             ->assertJsonPath('data.parse_run.error', null);
 
-        $organization = Organization::query()->sole();
-        $parseRun = $organization->parseRuns()->sole();
+        $parseRun = ParseRun::query()->sole();
 
-        $this->assertSame('123456789', $organization->external_id);
-        $this->assertSame('https://yandex.ru/maps/org/cafe/123456789', $organization->normalized_url);
+        $this->assertNull($parseRun->organization_id);
+        $this->assertSame(
+            'http://www.yandex.ru/maps/org/cafe/123456789/?utm_source=share#reviews',
+            $parseRun->source_url,
+        );
+        $this->assertSame('https://yandex.ru/maps/org/cafe/123456789', $parseRun->normalized_url);
+        $this->assertDatabaseCount('organizations', 0);
 
         Queue::assertPushed(
             SyncYandexOrganizationJob::class,
-            fn (SyncYandexOrganizationJob $job): bool => $job->organizationId === $organization->id
-                && $job->parseRunId === $parseRun->id,
+            fn (SyncYandexOrganizationJob $job): bool => $job->parseRunId === $parseRun->id,
         );
     }
 
@@ -91,11 +92,12 @@ class OrganizationConnectionTest extends TestCase
             ->assertAccepted()
             ->assertJsonPath('data.parse_run.status', ParseRunStatus::Queued->value);
 
-        $this->assertDatabaseHas('organizations', [
+        $this->assertDatabaseHas('parse_runs', [
             'source_url' => 'https://yandex.ru/maps/-/short-code',
             'normalized_url' => 'https://yandex.ru/maps/org/cafe/987654321',
-            'external_id' => '987654321',
+            'organization_id' => null,
         ]);
+        $this->assertDatabaseCount('organizations', 0);
 
         Http::assertSentCount(1);
     }
@@ -136,19 +138,15 @@ class OrganizationConnectionTest extends TestCase
         ])->assertAccepted();
 
         $this->assertSame(
-            $firstResponse->json('data.organization.id'),
-            $secondResponse->json('data.organization.id'),
-        );
-        $this->assertSame(
             $firstResponse->json('data.parse_run.id'),
             $secondResponse->json('data.parse_run.id'),
         );
-        $this->assertDatabaseCount('organizations', 1);
+        $this->assertDatabaseCount('organizations', 0);
         $this->assertDatabaseCount('parse_runs', 1);
         Queue::assertPushed(SyncYandexOrganizationJob::class, 1);
     }
 
-    public function test_completed_parse_run_allows_a_new_synchronization(): void
+    public function test_finished_parse_run_allows_a_new_synchronization(): void
     {
         Queue::fake();
         $this->actingAs(User::factory()->create());
@@ -157,8 +155,8 @@ class OrganizationConnectionTest extends TestCase
             'url' => 'https://yandex.ru/maps/org/cafe/123456789',
         ])->assertAccepted();
 
-        Organization::query()->sole()->parseRuns()->sole()->update([
-            'status' => ParseRunStatus::Succeeded,
+        ParseRun::query()->sole()->update([
+            'status' => ParseRunStatus::Failed,
             'finished_at' => now(),
         ]);
 
@@ -168,7 +166,7 @@ class OrganizationConnectionTest extends TestCase
             ->assertAccepted()
             ->assertJsonPath('data.parse_run.status', ParseRunStatus::Queued->value);
 
-        $this->assertDatabaseCount('organizations', 1);
+        $this->assertDatabaseCount('organizations', 0);
         $this->assertDatabaseCount('parse_runs', 2);
         Queue::assertPushed(SyncYandexOrganizationJob::class, 2);
     }

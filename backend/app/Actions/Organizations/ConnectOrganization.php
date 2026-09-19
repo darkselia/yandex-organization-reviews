@@ -3,10 +3,9 @@
 namespace App\Actions\Organizations;
 
 use App\Data\NormalizedYandexUrl;
-use App\Data\OrganizationConnection;
 use App\Enums\ParseRunStatus;
 use App\Jobs\SyncYandexOrganizationJob;
-use App\Models\Organization;
+use App\Models\ParseRun;
 use Illuminate\Support\Facades\DB;
 
 class ConnectOrganization
@@ -18,45 +17,30 @@ class ConnectOrganization
         ParseRunStatus::Retrying,
     ];
 
-    public function execute(string $sourceUrl, NormalizedYandexUrl $normalizedUrl): OrganizationConnection
+    public function execute(string $sourceUrl, NormalizedYandexUrl $normalizedUrl): ParseRun
     {
-        return DB::transaction(function () use ($sourceUrl, $normalizedUrl): OrganizationConnection {
-            $organization = Organization::query()->firstOrCreate(
-                [
-                    'source' => 'yandex',
-                    'external_id' => $normalizedUrl->externalId,
-                ],
-                [
-                    'source_url' => trim($sourceUrl),
-                    'normalized_url' => $normalizedUrl->url,
-                    'ratings_count' => 0,
-                    'reviews_count' => 0,
-                ],
-            );
-
-            if (! $organization->wasRecentlyCreated) {
-                $organization->update([
-                    'source_url' => trim($sourceUrl),
-                    'normalized_url' => $normalizedUrl->url,
-                ]);
-            }
-
-            $parseRun = $organization->parseRuns()
+        return DB::transaction(function () use ($sourceUrl, $normalizedUrl): ParseRun {
+            $parseRun = ParseRun::query()
+                ->where('source_external_id', $normalizedUrl->externalId)
                 ->whereIn('status', self::ACTIVE_STATUSES)
                 ->latest()
                 ->first();
 
             if ($parseRun === null) {
-                $parseRun = $organization->parseRuns()->create([
+                $parseRun = ParseRun::query()->create([
+                    'organization_id' => null,
+                    'source_url' => trim($sourceUrl),
+                    'normalized_url' => $normalizedUrl->url,
+                    'source_external_id' => $normalizedUrl->externalId,
                     'status' => ParseRunStatus::Queued,
                     'attempt_count' => 0,
                     'reviews_fetched' => 0,
                 ]);
 
-                SyncYandexOrganizationJob::dispatch($organization->id, $parseRun->id)->afterCommit();
+                SyncYandexOrganizationJob::dispatch($parseRun->id)->afterCommit();
             }
 
-            return new OrganizationConnection($organization, $parseRun);
+            return $parseRun;
         });
     }
 }

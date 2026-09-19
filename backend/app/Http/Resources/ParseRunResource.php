@@ -20,15 +20,28 @@ class ParseRunResource extends JsonResource
 
         return [
             'id' => $this->id,
+            'organization_id' => $this->organization_id,
             'status' => $this->status->value,
             'attempt_count' => $this->attempt_count,
             'reviews_fetched' => $this->reviews_fetched,
             'reviews_expected' => $this->reviews_expected,
             'progress_percent' => $progressPercent,
             'error' => $this->error_code === null ? null : [
-                'code' => $this->error_code,
-                'message' => $this->error_message,
+                'code' => $this->publicErrorCode(),
             ],
         ];
+    }
+
+    private function publicErrorCode(): string
+    {
+        return match ($this->error_code) {
+            'empty_source_response',
+            'invalid_source_data',
+            'source_schema_changed' => 'organization_unavailable',
+            'source_unavailable',
+            'source_blocked',
+            'source_rate_limited' => 'source_temporarily_unavailable',
+            default => 'processing_failed',
+        };
     }
 }

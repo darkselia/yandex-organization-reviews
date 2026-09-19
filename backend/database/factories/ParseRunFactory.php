@@ -16,6 +16,9 @@ class ParseRunFactory extends Factory
 
         return [
             'organization_id' => Organization::factory(),
+            'source_url' => 'https://yandex.ru/maps/org/test/123456789/',
+            'normalized_url' => 'https://yandex.ru/maps/org/test/123456789',
+            'source_external_id' => '123456789',
             'status' => ParseRunStatus::Succeeded,
             'attempt_count' => 1,
             'reviews_expected' => $reviewsCount,

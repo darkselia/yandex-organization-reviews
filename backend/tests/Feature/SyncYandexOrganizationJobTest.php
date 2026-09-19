@@ -32,7 +32,10 @@ class SyncYandexOrganizationJobTest extends TestCase
             'reviews_count' => 0,
             'last_synced_at' => null,
         ]);
-        $parseRun = ParseRun::factory()->for($organization)->create([
+        $parseRun = ParseRun::factory()->create([
+            'organization_id' => null,
+            'source_url' => 'https://yandex.ru/maps/org/old_slug/123456789',
+            'normalized_url' => 'https://yandex.ru/maps/org/old_slug/123456789',
             'status' => ParseRunStatus::Queued,
             'attempt_count' => 0,
             'reviews_expected' => null,
@@ -86,7 +89,7 @@ class SyncYandexOrganizationJobTest extends TestCase
                 );
             }
         };
-        $job = new SyncYandexOrganizationJob($organization->id, $parseRun->id);
+        $job = new SyncYandexOrganizationJob($parseRun->id);
 
         $job->handle($parser);
         $job->handle($parser);
@@ -121,6 +124,7 @@ class SyncYandexOrganizationJobTest extends TestCase
         $this->assertDatabaseCount('organization_snapshots', 1);
 
         $parseRun->refresh();
+        $this->assertSame($organization->id, $parseRun->organization_id);
         $this->assertSame(ParseRunStatus::Succeeded, $parseRun->status);
         $this->assertSame(1, $parseRun->attempt_count);
         $this->assertSame(2, $parseRun->reviews_expected);
@@ -137,8 +141,8 @@ class SyncYandexOrganizationJobTest extends TestCase
 
     public function test_permanent_parser_error_is_saved_without_retry(): void
     {
-        $organization = Organization::factory()->create();
-        $parseRun = ParseRun::factory()->for($organization)->create([
+        $parseRun = ParseRun::factory()->create([
+            'organization_id' => null,
             'status' => ParseRunStatus::Queued,
             'attempt_count' => 0,
             'started_at' => null,
@@ -155,7 +159,7 @@ class SyncYandexOrganizationJobTest extends TestCase
             }
         };
 
-        $job = (new SyncYandexOrganizationJob($organization->id, $parseRun->id))
+        $job = (new SyncYandexOrganizationJob($parseRun->id))
             ->withFakeQueueInteractions();
         $job->handle($parser);
 
@@ -171,13 +175,14 @@ class SyncYandexOrganizationJobTest extends TestCase
         $this->assertNotNull($parseRun->finished_at);
         $this->assertDatabaseCount('reviews', 0);
         $this->assertDatabaseCount('organization_snapshots', 0);
+        $this->assertDatabaseCount('organizations', 0);
         $job->assertNotReleased();
     }
 
     public function test_transient_parser_error_is_retried_twice_and_then_failed(): void
     {
-        $organization = Organization::factory()->create();
-        $parseRun = ParseRun::factory()->for($organization)->create([
+        $parseRun = ParseRun::factory()->create([
+            'organization_id' => null,
             'status' => ParseRunStatus::Queued,
             'attempt_count' => 0,
             'started_at' => null,
@@ -198,7 +203,7 @@ class SyncYandexOrganizationJobTest extends TestCase
             }
         };
 
-        $firstAttempt = (new SyncYandexOrganizationJob($organization->id, $parseRun->id))
+        $firstAttempt = (new SyncYandexOrganizationJob($parseRun->id))
             ->withFakeQueueInteractions();
         $firstAttempt->handle($parser);
         $firstAttempt->assertReleased(60);
@@ -208,7 +213,7 @@ class SyncYandexOrganizationJobTest extends TestCase
         $this->assertSame(1, $parseRun->attempt_count);
         $this->assertSame(ParserErrorCode::SourceRateLimited->value, $parseRun->error_code);
 
-        $secondAttempt = (new SyncYandexOrganizationJob($organization->id, $parseRun->id))
+        $secondAttempt = (new SyncYandexOrganizationJob($parseRun->id))
             ->withFakeQueueInteractions();
         $secondAttempt->handle($parser);
         $secondAttempt->assertReleased(300);
@@ -217,7 +222,7 @@ class SyncYandexOrganizationJobTest extends TestCase
         $this->assertSame(ParseRunStatus::Retrying, $parseRun->status);
         $this->assertSame(2, $parseRun->attempt_count);
 
-        $thirdAttempt = (new SyncYandexOrganizationJob($organization->id, $parseRun->id))
+        $thirdAttempt = (new SyncYandexOrganizationJob($parseRun->id))
             ->withFakeQueueInteractions();
         $thirdAttempt->handle($parser);
         $thirdAttempt->assertNotReleased();
@@ -227,12 +232,13 @@ class SyncYandexOrganizationJobTest extends TestCase
         $this->assertSame(3, $parseRun->attempt_count);
         $this->assertSame(ParserErrorCode::SourceRateLimited->value, $parseRun->error_code);
         $this->assertSame(3, $parser->calls);
+        $this->assertDatabaseCount('organizations', 0);
     }
 
     public function test_retry_can_finish_successfully_without_duplicate_reviews(): void
     {
-        $organization = Organization::factory()->create();
-        $parseRun = ParseRun::factory()->for($organization)->create([
+        $parseRun = ParseRun::factory()->create([
+            'organization_id' => null,
             'status' => ParseRunStatus::Queued,
             'attempt_count' => 0,
         ]);
@@ -273,12 +279,12 @@ class SyncYandexOrganizationJobTest extends TestCase
             }
         };
 
-        $firstAttempt = (new SyncYandexOrganizationJob($organization->id, $parseRun->id))
+        $firstAttempt = (new SyncYandexOrganizationJob($parseRun->id))
             ->withFakeQueueInteractions();
         $firstAttempt->handle($parser);
         $firstAttempt->assertReleased(60);
 
-        $secondAttempt = (new SyncYandexOrganizationJob($organization->id, $parseRun->id))
+        $secondAttempt = (new SyncYandexOrganizationJob($parseRun->id))
             ->withFakeQueueInteractions();
         $secondAttempt->handle($parser);
         $secondAttempt->assertNotReleased();
@@ -287,6 +293,8 @@ class SyncYandexOrganizationJobTest extends TestCase
         $this->assertSame(ParseRunStatus::Succeeded, $parseRun->status);
         $this->assertSame(2, $parseRun->attempt_count);
         $this->assertSame(2, $parser->calls);
+        $this->assertNotNull($parseRun->organization_id);
+        $this->assertDatabaseCount('organizations', 1);
         $this->assertDatabaseCount('reviews', 1);
         $this->assertDatabaseCount('organization_snapshots', 1);
     }
