@@ -71,5 +71,11 @@ async function logout(): Promise<void> {
   state.initializationError = null
 }
 
+function markGuest(): void {
+  state.user = null
+  state.status = 'guest'
+  state.initializationError = null
+}
+
 export const authState = readonly(state)
-export const authActions = { initialize, login, logout }
+export const authActions = { initialize, login, logout, markGuest }

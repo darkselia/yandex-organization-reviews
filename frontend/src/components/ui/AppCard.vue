@@ -26,7 +26,8 @@ withDefaults(
 }
 
 .card--wide {
-  width: min(100%, 720px);
+  width: 100%;
+  max-width: none;
 }
 
 @media (max-width: 520px) {

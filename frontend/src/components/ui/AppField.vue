@@ -57,7 +57,7 @@ const model = defineModel<string>({ required: true })
 .field__input {
   width: 100%;
   padding: 11px 12px;
-  border: 1px solid var(--color-border-input);
+  border: 1px solid var(--color-secondary-hover);
   border-radius: 8px;
   color: var(--color-text-strong);
   background: var(--color-surface-card);

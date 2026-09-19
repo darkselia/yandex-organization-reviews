@@ -40,12 +40,16 @@ withDefaults(
 }
 
 .button--primary {
-  color: var(--color-text-inverse);
+  color: var(--color-surface-card);
   background: var(--color-primary);
 }
 
 .button--primary:hover:not(:disabled) {
-  background: var(--color-primary-hover);
+  background: color-mix(
+    in srgb,
+    var(--color-primary) 78%,
+    var(--color-text-strong)
+  );
 }
 
 .button--secondary {
