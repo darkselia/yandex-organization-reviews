@@ -28,6 +28,7 @@ class OrganizationController extends Controller
     {
         $this->ensureConfirmed($organization);
         $reviews = $organization->reviews()
+            ->where('last_seen_at', '>=', $organization->last_synced_at)
             ->latest('published_at')
             ->latest('id')
             ->paginate(perPage: 50)

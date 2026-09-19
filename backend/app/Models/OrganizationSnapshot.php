@@ -10,6 +10,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 #[Fillable([
     'organization_id',
+    'parse_run_id',
     'rating',
     'ratings_count',
     'reviews_count',
@@ -24,6 +25,12 @@ class OrganizationSnapshot extends Model
     public function organization(): BelongsTo
     {
         return $this->belongsTo(Organization::class);
+    }
+
+    /** @return BelongsTo<ParseRun, $this> */
+    public function parseRun(): BelongsTo
+    {
+        return $this->belongsTo(ParseRun::class);
     }
 
     /** @return array<string, string> */

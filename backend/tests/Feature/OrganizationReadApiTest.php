@@ -53,15 +53,23 @@ class OrganizationReadApiTest extends TestCase
     public function test_reviews_are_sorted_and_paginated_by_fifty(): void
     {
         $this->actingAs(User::factory()->create());
-        $organization = Organization::factory()->create();
+        $syncedAt = now()->startOfSecond();
+        $organization = Organization::factory()->create(['last_synced_at' => $syncedAt]);
 
         for ($number = 1; $number <= 55; $number++) {
             Review::factory()->for($organization)->create([
                 'external_id' => "review-{$number}",
                 'author_name' => "Автор {$number}",
                 'published_at' => now()->subMinutes(55 - $number),
+                'last_seen_at' => $syncedAt,
             ]);
         }
+
+        Review::factory()->for($organization)->create([
+            'external_id' => 'stale-review',
+            'published_at' => now()->addMinute(),
+            'last_seen_at' => $syncedAt->copy()->subDay(),
+        ]);
 
         $firstPage = $this->getJson("/api/organizations/{$organization->id}/reviews?page=1")
             ->assertOk()
@@ -71,7 +79,8 @@ class OrganizationReadApiTest extends TestCase
             ->assertJsonPath('meta.current_page', 1)
             ->assertJsonPath('meta.last_page', 2)
             ->assertJsonPath('meta.per_page', 50)
-            ->assertJsonPath('meta.total', 55);
+            ->assertJsonPath('meta.total', 55)
+            ->assertJsonMissing(['stale-review']);
 
         $this->assertSame(50, count($firstPage->json('data')));
 

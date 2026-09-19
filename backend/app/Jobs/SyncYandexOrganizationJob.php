@@ -162,6 +162,7 @@ class SyncYandexOrganizationJob implements ShouldQueue
             }
 
             $organization->snapshots()->create([
+                'parse_run_id' => $parseRun->id,
                 'rating' => $parsedOrganization->rating,
                 'ratings_count' => $parsedOrganization->ratingsCount,
                 'reviews_count' => $parsedOrganization->reviewsCount,

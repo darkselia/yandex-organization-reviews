@@ -117,6 +117,7 @@ class SyncYandexOrganizationJobTest extends TestCase
         $this->assertDatabaseCount('reviews', 2);
         $this->assertDatabaseHas('organization_snapshots', [
             'organization_id' => $organization->id,
+            'parse_run_id' => $parseRun->id,
             'rating' => null,
             'ratings_count' => 0,
             'reviews_count' => 2,
@@ -137,6 +138,80 @@ class SyncYandexOrganizationJobTest extends TestCase
             'stored_reviews_count' => 2,
             'skipped_reviews_count' => 0,
         ], $parseRun->diagnostics);
+    }
+
+    public function test_repeated_sync_creates_linked_snapshots_with_changed_counters(): void
+    {
+        $firstRun = ParseRun::factory()->create([
+            'organization_id' => null,
+            'status' => ParseRunStatus::Queued,
+            'attempt_count' => 0,
+        ]);
+        $parser = new class implements OrganizationParser
+        {
+            public int $calls = 0;
+
+            public function parse(string $url, ProgressCallback $progress): ParsedOrganization
+            {
+                $this->calls++;
+                $isSecondSync = $this->calls === 2;
+
+                return new ParsedOrganization(
+                    externalId: '123456789',
+                    canonicalUrl: 'https://yandex.ru/maps/org/test/123456789',
+                    name: 'Тестовая организация',
+                    rating: $isSecondSync ? 4.8 : 4.5,
+                    ratingsCount: $isSecondSync ? 112 : 100,
+                    reviewsCount: $isSecondSync ? 12 : 10,
+                    reviews: [
+                        new ParsedReview(
+                            externalId: 'review-1',
+                            authorName: 'Анна',
+                            publishedAt: new DateTimeImmutable('2026-08-10T09:30:00+00:00'),
+                            text: $isSecondSync ? 'Обновлённый текст' : 'Первый текст',
+                            rating: $isSecondSync ? 5 : 4,
+                        ),
+                    ],
+                    sourceReviewsCount: 1,
+                    skippedReviewsCount: 0,
+                );
+            }
+        };
+
+        (new SyncYandexOrganizationJob($firstRun->id))->handle($parser);
+
+        $secondRun = ParseRun::factory()->create([
+            'organization_id' => null,
+            'status' => ParseRunStatus::Queued,
+            'attempt_count' => 0,
+        ]);
+        (new SyncYandexOrganizationJob($secondRun->id))->handle($parser);
+
+        $organization = Organization::query()
+            ->where('external_id', '123456789')
+            ->firstOrFail();
+
+        $this->assertSame(1, Organization::query()->count());
+        $this->assertSame('4.80', $organization->rating);
+        $this->assertSame(112, $organization->ratings_count);
+        $this->assertSame(12, $organization->reviews_count);
+        $this->assertDatabaseCount('organization_snapshots', 2);
+        $this->assertDatabaseHas('organization_snapshots', [
+            'organization_id' => $organization->id,
+            'parse_run_id' => $firstRun->id,
+            'rating' => 4.5,
+            'ratings_count' => 100,
+            'reviews_count' => 10,
+        ]);
+        $this->assertDatabaseHas('organization_snapshots', [
+            'organization_id' => $organization->id,
+            'parse_run_id' => $secondRun->id,
+            'rating' => 4.8,
+            'ratings_count' => 112,
+            'reviews_count' => 12,
+        ]);
+        $this->assertSame($firstRun->id, $firstRun->snapshot()->firstOrFail()->parse_run_id);
+        $this->assertSame($secondRun->id, $secondRun->snapshot()->firstOrFail()->parse_run_id);
     }
 
     public function test_permanent_parser_error_is_saved_without_retry(): void

@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 #[Fillable([
     'organization_id',
@@ -33,6 +34,12 @@ class ParseRun extends Model
     public function organization(): BelongsTo
     {
         return $this->belongsTo(Organization::class);
+    }
+
+    /** @return HasOne<OrganizationSnapshot, $this> */
+    public function snapshot(): HasOne
+    {
+        return $this->hasOne(OrganizationSnapshot::class);
     }
 
     /** @return array<string, string> */

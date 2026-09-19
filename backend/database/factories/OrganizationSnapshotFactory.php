@@ -13,6 +13,7 @@ class OrganizationSnapshotFactory extends Factory
     {
         return [
             'organization_id' => Organization::factory(),
+            'parse_run_id' => null,
             'rating' => fake()->randomFloat(2, 1, 5),
             'ratings_count' => fake()->numberBetween(1, 5000),
             'reviews_count' => fake()->numberBetween(1, 600),
