@@ -8,9 +8,7 @@
 
 ## Ссылки
 
-- [Репозиторий на GitHub](https://github.com/darkselia/yandex-organization-widget)
-- [Демо на darkselia.ru](https://darkselia.ru) — домен, на котором будет опубликован рабочий прототип. После деплоя
-  здесь будет указан точный адрес приложения.
+- [Демо на darkselia.ru](https://yandex-organization-reviews.darkselia.ru)
 
 ## Требования
 
